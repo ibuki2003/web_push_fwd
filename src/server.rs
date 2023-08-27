@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Context;
 use axum::{
-    extract::{Path, State},
+    extract::{Host, Path, State},
     headers,
     http::{HeaderValue, StatusCode},
     response::{IntoResponse, Response},
@@ -22,6 +22,10 @@ struct AppState {
     db: MySqlPool,
     fcm_token: crate::fcm::FcmTokenRef,
     endpoint: String,
+}
+
+fn make_endpoint_string(host: &str, id: &str) -> String {
+    format!("https://{}/push/{}", host, id)
 }
 
 pub async fn start_server() -> anyhow::Result<()> {
@@ -85,6 +89,7 @@ fn into_response(e: sqlx::Error) -> Response {
 }
 
 async fn api_register(
+    Host(host): Host,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RegisterPayload>,
 ) -> axum::response::Result<impl IntoResponse> {
@@ -102,7 +107,13 @@ async fn api_register(
 
     if let Some(r) = r {
         if payload.vapid == r.vapid {
-            return Ok((StatusCode::OK, Json(r)));
+            return Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "id": r.id,
+                    "endpoint": make_endpoint_string(&host, &r.id),
+                })),
+            ));
         } else {
             sqlx::query("update registrations set vapid = ? where id = ?")
                 .bind(&payload.vapid)
@@ -116,12 +127,10 @@ async fn api_register(
             log::info!("Updated registration: {:?}", r);
             return Ok((
                 StatusCode::OK,
-                Json(Registration {
-                    id: r.id,
-                    token: payload.token,
-                    domain: payload.domain,
-                    vapid: payload.vapid,
-                }),
+                Json(serde_json::json!({
+                    "id": r.id,
+                    "endpoint": make_endpoint_string(&host, &r.id),
+                })),
             ));
         }
     }
@@ -141,12 +150,10 @@ async fn api_register(
 
     Ok((
         StatusCode::CREATED,
-        Json(Registration {
-            id,
-            token: payload.token,
-            domain: payload.domain,
-            vapid: payload.vapid,
-        }),
+        Json(serde_json::json!({
+            "id": id,
+            "endpoint": make_endpoint_string(&host, &id),
+        })),
     ))
 }
 
