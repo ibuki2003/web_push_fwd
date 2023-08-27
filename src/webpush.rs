@@ -20,7 +20,9 @@ impl headers::authorization::Credentials for AuthVapid {
 
         value.split(',').for_each(|part: &str| {
             let parts = part.splitn(2, '=').collect::<Vec<&str>>();
-            if parts.len() != 2 { return; }
+            if parts.len() != 2 {
+                return;
+            }
             let key = parts[0].trim();
             let value = parts[1].trim();
 
@@ -40,6 +42,4 @@ impl headers::authorization::Credentials for AuthVapid {
     fn encode(&self) -> HeaderValue {
         HeaderValue::from_str(&format!("vapid t={},k={}", self.t, self.k)).unwrap()
     }
-
 }
-

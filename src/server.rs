@@ -170,7 +170,7 @@ async fn api_push(
             return Ok((
                 StatusCode::GONE, // to tell the service to delete the subscription
                 "Not Found",
-            ))
+            ));
         }
     };
 
@@ -200,21 +200,20 @@ async fn api_push(
         })?;
 
     // TODO: send push notification
-    let req =
-        hyper::Request::post(&state.endpoint)
-            .method("POST")
-            .header(
-                "Authorization",
-                crate::fcm::get_auth_header(&state.fcm_token)
-                    .await
-                    .ok_or("Token empty error")?,
-            )
-            .header("Content-Type", "application/json")
-            .body(hyper::Body::from(payload))
-            .map_err(|e| {
-                log::error!("Failed to create request: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-            })?;
+    let req = hyper::Request::post(&state.endpoint)
+        .method("POST")
+        .header(
+            "Authorization",
+            crate::fcm::get_auth_header(&state.fcm_token)
+                .await
+                .ok_or("Token empty error")?,
+        )
+        .header("Content-Type", "application/json")
+        .body(hyper::Body::from(payload))
+        .map_err(|e| {
+            log::error!("Failed to create request: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
+        })?;
 
     let https = hyper_tls::HttpsConnector::new();
     let client = hyper::Client::builder().build::<_, hyper::Body>(https);

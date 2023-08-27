@@ -5,4 +5,3 @@ pub struct Registration {
     pub domain: String,
     pub vapid: String,
 }
-

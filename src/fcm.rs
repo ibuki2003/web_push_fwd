@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use anyhow::Context;
-use yup_oauth2::{ServiceAccountAuthenticator, AccessToken};
+use yup_oauth2::{AccessToken, ServiceAccountAuthenticator};
 
 #[derive(serde::Serialize)]
 pub struct FcmNotification {
@@ -55,7 +55,9 @@ pub async fn acquire_access_token() -> anyhow::Result<FcmTokenRef> {
             log::info!("token expire at: {:?}", exp);
             let exp = match exp {
                 Some(exp) => exp,
-                None => { break; }
+                None => {
+                    break;
+                }
             };
 
             let dur = exp - std::time::SystemTime::now();
