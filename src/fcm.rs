@@ -35,6 +35,13 @@ async fn get_token(force: bool) -> anyhow::Result<AccessToken> {
     }
 }
 
+pub async fn get_project_id() -> anyhow::Result<String> {
+    let secret = yup_oauth2::read_service_account_key("client_secret.json")
+        .await
+        .context("client secret file")?;
+    secret.project_id.context("project id not found")
+}
+
 pub type FcmTokenRef = Arc<Mutex<AccessToken>>;
 // get **auto-refreshing** access token
 pub async fn acquire_access_token() -> anyhow::Result<FcmTokenRef> {

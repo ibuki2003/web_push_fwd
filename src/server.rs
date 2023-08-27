@@ -21,6 +21,7 @@ use sqlx::{
 struct AppState {
     db: MySqlPool,
     fcm_token: crate::fcm::FcmTokenRef,
+    endpoint: String,
 }
 
 pub async fn start_server() -> anyhow::Result<()> {
@@ -33,9 +34,16 @@ pub async fn start_server() -> anyhow::Result<()> {
 
     let fcm_token = crate::fcm::acquire_access_token().await?;
 
+    let fcm_project_id = crate::fcm::get_project_id().await?;
+    let endpoint = format!(
+        "https://fcm.googleapis.com/v1/projects/{}/messages:send",
+        fcm_project_id
+    );
+
     let state = Arc::new(AppState {
         db: pool.clone(),
         fcm_token,
+        endpoint,
     });
 
     let app = Router::new()
@@ -189,7 +197,7 @@ async fn api_push(
 
     // TODO: send push notification
     let req =
-        hyper::Request::post("https://fcm.googleapis.com/v1/projects/pskey-f2c80/messages:send")
+        hyper::Request::post(&state.endpoint)
             .method("POST")
             .header(
                 "Authorization",
