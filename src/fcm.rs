@@ -52,17 +52,16 @@ pub async fn acquire_access_token() -> anyhow::Result<FcmTokenRef> {
     tokio::spawn(async move {
         loop {
             let exp = token.lock().await.expiration_time();
-            println!("exp: {:?}", exp);
+            log::info!("token expire at: {:?}", exp);
             let exp = match exp {
                 Some(exp) => exp,
                 None => { break; }
             };
 
             let dur = exp - std::time::SystemTime::now();
-            println!("sleeping for {:?}", dur);
             tokio::time::sleep(dur.try_into().unwrap()).await;
 
-            println!("refreshing token");
+            log::info!("refreshing fcm token");
             let new_token = get_token(true).await.unwrap();
             let mut token = token.lock().await;
             *token = new_token;

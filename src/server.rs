@@ -57,6 +57,7 @@ pub async fn start_server() -> anyhow::Result<()> {
         .parse()
         .expect("PORT must be a number");
 
+    log::info!("Listening on port {}", port);
     axum::Server::bind(&SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port))
         .serve(app.into_make_service())
         .await
@@ -71,7 +72,7 @@ async fn index() -> &'static str {
 
 use crate::{scheme::Registration, webpush::AuthVapid};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct RegisterPayload {
     token: String,
     domain: String,
@@ -79,7 +80,7 @@ struct RegisterPayload {
 }
 
 fn into_response(e: sqlx::Error) -> Response {
-    eprintln!("Failed query: {}", e);
+    log::error!("Failed query: {}", e);
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
 }
 
@@ -109,9 +110,10 @@ async fn api_register(
                 .execute(&mut *conn)
                 .await
                 .map_err(|e| {
-                    eprintln!("Failed to update registration: {}", e);
+                    log::error!("Failed to update registration: {}", e);
                     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
                 })?;
+            log::info!("Updated registration: {:?}", r);
             return Ok((
                 StatusCode::OK,
                 Json(Registration {
@@ -134,6 +136,8 @@ async fn api_register(
         .execute(&mut *conn)
         .await
         .map_err(into_response)?;
+
+    log::info!("Registered: {}: {:?}", id, payload);
 
     Ok((
         StatusCode::CREATED,
@@ -172,7 +176,7 @@ async fn api_push(
 
     if r.vapid != authorization.k
         || crate::jwt::verify_jwt(&authorization.t, &authorization.k).map_err(|e| {
-            eprintln!("Failed to verify JWT: {}", e);
+            log::error!("Failed to verify JWT: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
         })? == false
     {
@@ -191,7 +195,7 @@ async fn api_push(
 
     let payload =
         serde_json::to_string(&serde_json::json!({ "message": payload })).map_err(|e| {
-            eprintln!("Failed to serialize payload: {}", e);
+            log::error!("Failed to serialize payload: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
         })?;
 
@@ -208,14 +212,14 @@ async fn api_push(
             .header("Content-Type", "application/json")
             .body(hyper::Body::from(payload))
             .map_err(|e| {
-                eprintln!("Failed to create request: {}", e);
+                log::error!("Failed to create request: {}", e);
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
             })?;
 
     let https = hyper_tls::HttpsConnector::new();
     let client = hyper::Client::builder().build::<_, hyper::Body>(https);
     let res = client.request(req).await.map_err(|e| {
-        eprintln!("Failed to send request: {}", e);
+        log::error!("Failed to send request: {}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
     })?;
 
