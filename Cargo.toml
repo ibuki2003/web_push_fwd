@@ -7,6 +7,14 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
+axum = { version = "0.6.20", features = ["headers"] }
 base64 = "0.21.2"
+dotenv = "0.15.0"
+hyper = "0.14.27"
+hyper-tls = "0.5.0"
 openssl = "0.10.56"
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.105"
+sqlx = { version = "0.7.1", features = ["runtime-tokio", "mysql"] }
+tokio = { version = "1.32.0", features = ["full"] }
 yup-oauth2 = "8.3.0"
