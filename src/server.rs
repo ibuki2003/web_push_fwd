@@ -126,7 +126,7 @@ async fn api_register(
         }
     }
 
-    let id = "1234"; // TODO: generate id
+    let id = ulid::Ulid::new().to_string();
 
     sqlx::query("insert into registrations (id, token, domain, vapid) values (?, ?, ?, ?)")
         .bind(&id)
@@ -142,7 +142,7 @@ async fn api_register(
     Ok((
         StatusCode::CREATED,
         Json(Registration {
-            id: id.to_string(),
+            id,
             token: payload.token,
             domain: payload.domain,
             vapid: payload.vapid,
