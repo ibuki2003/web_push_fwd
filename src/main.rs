@@ -23,6 +23,7 @@ fn init_logger() {
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
+    init_logger();
 
     web_push_fwd::server::start_server().await?;
 
