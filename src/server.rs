@@ -197,7 +197,7 @@ async fn api_push(
     let body_base64 = base64::engine::general_purpose::STANDARD.encode(body.as_ref());
 
     let payload = crate::fcm::FcmNotification {
-        token: r.token,
+        token: r.token.clone(),
         data: crate::fcm::FcmNotificationData {
             webpush_message: body_base64,
             src_domain: r.domain,
@@ -241,8 +241,8 @@ async fn api_push(
     }
 
     if res.status() == StatusCode::NOT_FOUND {
-        sqlx::query("delete from registrations where id = ?")
-            .bind(&id)
+        sqlx::query("delete from registrations where token = ?")
+            .bind(&r.token)
             .execute(&state.db)
             .await
             .map_err(into_response)?;
