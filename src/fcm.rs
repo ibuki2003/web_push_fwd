@@ -5,9 +5,22 @@ use anyhow::Context;
 use yup_oauth2::{AccessToken, ServiceAccountAuthenticator};
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FcmNotificationPriority {
+    High,
+    Normal,
+}
+
+#[derive(serde::Serialize)]
+pub struct FcmNotificationAndroid {
+    pub priority: FcmNotificationPriority,
+}
+
+#[derive(serde::Serialize)]
 pub struct FcmNotification {
     pub token: String,
     pub data: FcmNotificationData,
+    pub android: FcmNotificationAndroid,
 }
 
 #[derive(serde::Serialize)]

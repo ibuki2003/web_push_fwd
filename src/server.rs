@@ -74,7 +74,11 @@ async fn index() -> &'static str {
     "Hello, World!"
 }
 
-use crate::{scheme::Registration, webpush::AuthVapid};
+use crate::{
+    fcm::{FcmNotificationAndroid, FcmNotificationPriority},
+    scheme::Registration,
+    webpush::AuthVapid,
+};
 
 #[derive(serde::Deserialize, Debug)]
 struct RegisterPayload {
@@ -197,6 +201,9 @@ async fn api_push(
         data: crate::fcm::FcmNotificationData {
             webpush_message: body_base64,
             src_domain: r.domain,
+        },
+        android: FcmNotificationAndroid {
+            priority: FcmNotificationPriority::High,
         },
     };
 
