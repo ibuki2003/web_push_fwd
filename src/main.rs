@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 fn init_logger() {
     let base_config = fern::Dispatch::new();

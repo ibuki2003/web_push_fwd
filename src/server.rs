@@ -8,7 +8,7 @@ use anyhow::Context;
 use axum::{
     extract::{Host, Path, State},
     headers,
-    http::{HeaderValue, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router, TypedHeader,
@@ -87,19 +87,42 @@ struct RegisterPayload {
     vapid: String,
 }
 
-fn into_response(e: sqlx::Error) -> Response {
-    log::error!("Failed query: {}", e);
-    (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+enum AppError {
+    Anyhow(anyhow::Error),
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::Anyhow(e) => {
+                log::error!("Internal Server Error: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+            }
+        }
+    }
+}
+
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(e: E) -> Self {
+        Self::Anyhow(e.into())
+    }
 }
 
 async fn api_register(
     Host(host): Host,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RegisterPayload>,
-) -> axum::response::Result<impl IntoResponse> {
-    let mut conn = state.db.acquire().await.map_err(into_response)?;
+) -> Result<impl IntoResponse, AppError> {
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .context("Failed to acquire connection")?;
 
-    conn.begin().await.map_err(into_response)?;
+    conn.begin().await.context("Failed to begin transaction")?;
 
     let r: Option<Registration> =
         sqlx::query_as("select * from registrations where token = ? and domain = ?")
@@ -107,7 +130,7 @@ async fn api_register(
             .bind(&payload.domain)
             .fetch_optional(&mut *conn)
             .await
-            .map_err(into_response)?;
+            .context("Failed to fetch registration")?;
 
     if let Some(r) = r {
         if payload.vapid == r.vapid {
@@ -124,10 +147,7 @@ async fn api_register(
                 .bind(&r.id)
                 .execute(&mut *conn)
                 .await
-                .map_err(|e| {
-                    log::error!("Failed to update registration: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-                })?;
+                .context("Failed to update registration")?;
             log::info!("Updated registration: {:?}", r);
             return Ok((
                 StatusCode::OK,
@@ -148,7 +168,7 @@ async fn api_register(
         .bind(&payload.vapid)
         .execute(&mut *conn)
         .await
-        .map_err(into_response)?;
+        .context("Failed to insert registration")?;
 
     log::info!("Registered: {}: {:?}", id, payload);
 
@@ -168,12 +188,12 @@ async fn api_push(
         headers::Authorization<AuthVapid>,
     >,
     body: axum::body::Bytes,
-) -> axum::response::Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, AppError> {
     let r = sqlx::query_as("select * from registrations where id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
         .await
-        .map_err(into_response)?;
+        .context("Failed to fetch registration")?;
 
     let r: Registration = match r {
         Some(r) => r,
@@ -186,10 +206,9 @@ async fn api_push(
     };
 
     if r.vapid != authorization.k
-        || crate::jwt::verify_jwt(&authorization.t, &authorization.k).map_err(|e| {
-            log::error!("Failed to verify JWT: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-        })? == false
+        || crate::jwt::verify_jwt(&authorization.t, &authorization.k)
+            .context("Failed to verify JWT")?
+            == false
     {
         return Ok((StatusCode::UNAUTHORIZED, "Unauthorized"));
     }
@@ -207,11 +226,8 @@ async fn api_push(
         },
     };
 
-    let payload =
-        serde_json::to_string(&serde_json::json!({ "message": payload })).map_err(|e| {
-            log::error!("Failed to serialize payload: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-        })?;
+    let payload = serde_json::to_string(&serde_json::json!({ "message": payload }))
+        .context("Failed to serialize payload")?;
 
     // TODO: send push notification
     let req = hyper::Request::post(&state.endpoint)
@@ -220,21 +236,18 @@ async fn api_push(
             "Authorization",
             crate::fcm::get_auth_header(&state.fcm_token)
                 .await
-                .ok_or("Token empty error")?,
+                .context("Token empty error")?,
         )
         .header("Content-Type", "application/json")
         .body(hyper::Body::from(payload))
-        .map_err(|e| {
-            log::error!("Failed to create request: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-        })?;
+        .context("Failed to create request")?;
 
     let https = hyper_tls::HttpsConnector::new();
     let client = hyper::Client::builder().build::<_, hyper::Body>(https);
-    let res = client.request(req).await.map_err(|e| {
-        log::error!("Failed to send request: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-    })?;
+    let res = client
+        .request(req)
+        .await
+        .context("Failed to send request")?;
 
     if res.status().is_success() {
         return Ok((StatusCode::OK, "ok"));
@@ -245,7 +258,7 @@ async fn api_push(
             .bind(&r.token)
             .execute(&state.db)
             .await
-            .map_err(into_response)?;
+            .context("Failed to delete registration")?;
 
         // expired registration
         return Ok((
