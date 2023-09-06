@@ -20,7 +20,7 @@ use sqlx::{
 
 struct AppState {
     db: MySqlPool,
-    fcm_token: crate::fcm::FcmTokenRef,
+    fcm_token: crate::fcm::FcmTokenManager,
     endpoint: String,
 }
 
@@ -36,9 +36,14 @@ pub async fn start_server() -> anyhow::Result<()> {
         .await
         .context("Failed to connect to the database")?;
 
-    let fcm_token = crate::fcm::acquire_access_token().await?;
+    let fcm_token =
+        crate::fcm::FcmTokenManager::new(&["https://www.googleapis.com/auth/firebase.messaging"])
+            .await
+            .context("Failed to create FCM token manager")?;
 
-    let fcm_project_id = crate::fcm::get_project_id().await?;
+    let fcm_project_id = fcm_token
+        .get_project_id()
+        .context("FCM project ID not found")?;
     let endpoint = format!(
         "https://fcm.googleapis.com/v1/projects/{}/messages:send",
         fcm_project_id
@@ -232,12 +237,7 @@ async fn api_push(
     // TODO: send push notification
     let req = hyper::Request::post(&state.endpoint)
         .method("POST")
-        .header(
-            "Authorization",
-            crate::fcm::get_auth_header(&state.fcm_token)
-                .await
-                .context("Token empty error")?,
-        )
+        .header("Authorization", state.fcm_token.get_auth_header().await?)
         .header("Content-Type", "application/json")
         .body(hyper::Body::from(payload))
         .context("Failed to create request")?;

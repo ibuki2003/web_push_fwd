@@ -1,8 +1,5 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
 use anyhow::Context;
-use yup_oauth2::{AccessToken, ServiceAccountAuthenticator};
+use yup_oauth2::{authenticator::Authenticator, AccessToken, ServiceAccountAuthenticator};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -29,64 +26,43 @@ pub struct FcmNotificationData {
     pub src_domain: String,
 }
 
-async fn get_token(force: bool) -> anyhow::Result<AccessToken> {
-    let secret = yup_oauth2::read_service_account_key("client_secret.json")
-        .await
-        .context("client secret file")?;
+pub struct FcmTokenManager {
+    auth: Authenticator<yup_oauth2::hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>,
+    scopes: Vec<&'static str>,
+    project_id: Option<String>,
+}
 
-    let auth = ServiceAccountAuthenticator::builder(secret)
-        .persist_tokens_to_disk("tokencache.json")
-        .build()
-        .await?;
+impl FcmTokenManager {
+    pub async fn new(scopes: &[&'static str]) -> anyhow::Result<Self> {
+        let secret = yup_oauth2::read_service_account_key("client_secret.json")
+            .await
+            .context("client secret file")?;
 
-    let scopes = &["https://www.googleapis.com/auth/firebase.messaging"];
+        let pid = secret.project_id.clone();
 
-    if force {
-        Ok(auth.force_refreshed_token(scopes).await?)
-    } else {
-        Ok(auth.token(scopes).await?)
+        let auth = ServiceAccountAuthenticator::builder(secret)
+            .persist_tokens_to_disk("tokencache.json")
+            .build()
+            .await?;
+
+        Ok(Self {
+            auth,
+            scopes: scopes.to_vec(),
+            project_id: pid,
+        })
     }
-}
 
-pub async fn get_project_id() -> anyhow::Result<String> {
-    let secret = yup_oauth2::read_service_account_key("client_secret.json")
-        .await
-        .context("client secret file")?;
-    secret.project_id.context("project id not found")
-}
+    pub fn get_project_id(&self) -> Option<String> {
+        self.project_id.clone()
+    }
 
-pub type FcmTokenRef = Arc<Mutex<AccessToken>>;
-// get **auto-refreshing** access token
-pub async fn acquire_access_token() -> anyhow::Result<FcmTokenRef> {
-    let token = get_token(false).await?; // first time
-    let token = Arc::new(Mutex::new(token));
+    pub async fn get_token(&self) -> anyhow::Result<AccessToken> {
+        self.auth.token(&self.scopes).await.map_err(|e| e.into())
+    }
 
-    let token_ = token.clone();
-    tokio::spawn(async move {
-        loop {
-            let exp = token.lock().await.expiration_time();
-            log::info!("token expire at: {:?}", exp);
-            let exp = match exp {
-                Some(exp) => exp,
-                None => {
-                    break;
-                }
-            };
-
-            let dur = exp - std::time::SystemTime::now();
-            tokio::time::sleep(dur.try_into().unwrap()).await;
-
-            log::info!("refreshing fcm token");
-            let new_token = get_token(true).await.unwrap();
-            let mut token = token.lock().await;
-            *token = new_token;
-        }
-    });
-
-    Ok(token_)
-}
-
-pub async fn get_auth_header(token: &FcmTokenRef) -> Option<String> {
-    let token = token.lock().await;
-    token.token().map(|t| format!("Bearer {}", t))
+    pub async fn get_auth_header(&self) -> anyhow::Result<String> {
+        let token = self.get_token().await?;
+        let t = token.token().context("token empty")?;
+        Ok(format!("Bearer {}", t))
+    }
 }
