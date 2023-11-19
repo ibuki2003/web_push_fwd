@@ -58,7 +58,9 @@ pub async fn start_server() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(index))
         .route("/register", post(api_register))
-        .route("/push/:id", post(api_push))
+        .route("/push/:id", post(api_push_noname))
+        .route("/push/:id/", post(api_push_noname))
+        .route("/push/:id/*name", post(api_push))
         .route("/delete", delete(api_delete))
         .with_state(state);
 
@@ -213,8 +215,17 @@ async fn api_delete(
     ));
 }
 
-async fn api_push(
+async fn api_push_noname(
     Path(id): Path<String>,
+    state: State<Arc<AppState>>,
+    header: TypedHeader<headers::Authorization<AuthVapid>>,
+    body: axum::body::Bytes,
+) -> Result<impl IntoResponse, AppError> {
+    api_push(Path((id, None)), state, header, body).await
+}
+
+async fn api_push(
+    Path((id, name)): Path<(String, Option<String>)>,
     State(state): State<Arc<AppState>>,
     TypedHeader(headers::Authorization(authorization)): TypedHeader<
         headers::Authorization<AuthVapid>,
@@ -252,6 +263,7 @@ async fn api_push(
         data: crate::fcm::FcmNotificationData {
             webpush_message: body_base64,
             src_domain: r.domain,
+            name,
         },
         android: FcmNotificationAndroid {
             priority: FcmNotificationPriority::High,

@@ -24,6 +24,7 @@ pub struct FcmNotification {
 pub struct FcmNotificationData {
     pub webpush_message: String,
     pub src_domain: String,
+    pub name: Option<String>,
 }
 
 pub struct FcmTokenManager {
