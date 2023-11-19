@@ -78,8 +78,14 @@ pub async fn start_server() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn index() -> &'static str {
-    "Hello, World!"
+async fn index() -> String {
+    format!(
+        concat!(
+            "Web push forwarding server v{}\n",
+            "further information: https://github.com/ibuki2003/web_push_fwd\n",
+        ),
+        env!("CARGO_PKG_VERSION"),
+    )
 }
 
 use crate::{
