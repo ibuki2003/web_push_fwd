@@ -61,7 +61,7 @@ pub async fn start_server() -> anyhow::Result<()> {
         .route("/push/:id", post(api_push_noname))
         .route("/push/:id/", post(api_push_noname))
         .route("/push/:id/*name", post(api_push))
-        .route("/delete", delete(api_delete))
+        .route("/unregister", post(api_unregister).delete(api_unregister))
         .with_state(state);
 
     let port = std::env::var("PORT")
@@ -196,7 +196,7 @@ async fn api_register(
     ))
 }
 
-async fn api_delete(
+async fn api_unregister(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RegisterPayload>,
 ) -> Result<impl IntoResponse, AppError> {
