@@ -10,7 +10,7 @@ use axum::{
     headers,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, delete},
     Json, Router, TypedHeader,
 };
 use sqlx::{
@@ -59,6 +59,7 @@ pub async fn start_server() -> anyhow::Result<()> {
         .route("/", get(index))
         .route("/register", post(api_register))
         .route("/push/:id", post(api_push))
+        .route("/delete", delete(api_delete))
         .with_state(state);
 
     let port = std::env::var("PORT")
@@ -184,6 +185,32 @@ async fn api_register(
             "endpoint": make_endpoint_string(&host, &id),
         })),
     ))
+}
+
+async fn api_delete(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RegisterPayload>,
+) -> Result<impl IntoResponse, AppError> {
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .context("Failed to acquire connection")?;
+
+    conn.begin().await.context("Failed to begin transaction")?;
+
+    sqlx::query("delete from registrations where token = ? and domain = ?")
+        .bind(&payload.token)
+        .bind(&payload.domain)
+        .execute(&mut *conn)
+        .await
+        .context("Failed to delete registration")?;
+
+    log::info!("Deleted registration: {}@{}", &payload.token, &payload.domain);
+    return Ok((
+        StatusCode::NO_CONTENT,
+        "",
+    ));
 }
 
 async fn api_push(
