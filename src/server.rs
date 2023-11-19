@@ -92,7 +92,7 @@ use crate::{
 struct RegisterPayload {
     token: String,
     domain: String,
-    vapid: String,
+    vapid: Option<String>,
 }
 
 enum AppError {
@@ -141,7 +141,8 @@ async fn api_register(
             .context("Failed to fetch registration")?;
 
     if let Some(r) = r {
-        if payload.vapid == r.vapid {
+        let vapid = payload.vapid;
+        if vapid.as_ref().map_or(true, |v| *v == r.vapid) {
             return Ok((
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -151,7 +152,7 @@ async fn api_register(
             ));
         } else {
             sqlx::query("update registrations set vapid = ? where id = ?")
-                .bind(&payload.vapid)
+                .bind(&vapid.unwrap())
                 .bind(&r.id)
                 .execute(&mut *conn)
                 .await
@@ -167,13 +168,19 @@ async fn api_register(
         }
     }
 
+    if payload.vapid.is_none() {
+        return Ok((StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "error": "vapid is required",
+        }))));
+    }
+
     let id = ulid::Ulid::new().to_string();
 
     sqlx::query("insert into registrations (id, token, domain, vapid) values (?, ?, ?, ?)")
         .bind(&id)
         .bind(&payload.token)
         .bind(&payload.domain)
-        .bind(&payload.vapid)
+        .bind(&payload.vapid.clone().unwrap())
         .execute(&mut *conn)
         .await
         .context("Failed to insert registration")?;
