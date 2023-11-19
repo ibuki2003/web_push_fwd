@@ -10,7 +10,7 @@ use axum::{
     headers,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post, delete},
+    routing::{delete, get, post},
     Json, Router, TypedHeader,
 };
 use sqlx::{
@@ -169,9 +169,12 @@ async fn api_register(
     }
 
     if payload.vapid.is_none() {
-        return Ok((StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "error": "vapid is required",
-        }))));
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "vapid is required",
+            })),
+        ));
     }
 
     let id = ulid::Ulid::new().to_string();
@@ -215,11 +218,12 @@ async fn api_unregister(
         .await
         .context("Failed to delete registration")?;
 
-    log::info!("Deleted registration: {}@{}", &payload.token, &payload.domain);
-    return Ok((
-        StatusCode::NO_CONTENT,
-        "",
-    ));
+    log::info!(
+        "Deleted registration: {}@{}",
+        &payload.token,
+        &payload.domain
+    );
+    return Ok((StatusCode::NO_CONTENT, ""));
 }
 
 async fn api_push_noname(
